@@ -24,6 +24,20 @@ fn restore_terminal() {
 }
 
 fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        println!("tui-task-manager v0.1.0 — Полноценный TUI монитор задач на Rust с поддержкой мыши");
+        println!("\nИспользование: tui-task-manager [ОПЦИИ]");
+        println!("\nОпции:");
+        println!("  -h, --help       Показать эту справку");
+        println!("  -v, --version    Показать версию программы");
+        return Ok(());
+    }
+    if args.iter().any(|a| a == "--version" || a == "-v") {
+        println!("tui-task-manager {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+
     // Install panic hook so terminal & mouse mode are always restored cleanly
     let original_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
@@ -137,6 +151,84 @@ mod tests {
         terminal.draw(|frame| ui::draw(frame, &mut app)).unwrap();
         app.active_tab = ActiveTab::DisksAndNet;
         terminal.draw(|frame| ui::draw(frame, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_mouse_column_sort_and_mode_toggles() {
+        let backend = TestBackend::new(140, 40);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = App::new();
+
+        terminal.draw(|frame| ui::draw(frame, &mut app)).unwrap();
+
+        // Click on MemBytes column header to sort by memory
+        let mem_header_rect = app
+            .hitboxes
+            .iter()
+            .find(|h| h.target == HitTarget::SortHeader(SortColumn::MemBytes))
+            .unwrap()
+            .rect;
+
+        event::handle_mouse_event(
+            &mut app,
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: mem_header_rect.x + 1,
+                row: mem_header_rect.y,
+                modifiers: KeyModifiers::empty(),
+            },
+        );
+        assert_eq!(app.sort_col, SortColumn::MemBytes);
+        assert!(!app.sort_asc);
+
+        // Click again to flip sort order
+        event::handle_mouse_event(
+            &mut app,
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: mem_header_rect.x + 1,
+                row: mem_header_rect.y,
+                modifiers: KeyModifiers::empty(),
+            },
+        );
+        assert!(app.sort_asc);
+
+        // Click Group Apps toggle button
+        let grp_rect = app
+            .hitboxes
+            .iter()
+            .find(|h| h.target == HitTarget::ToggleGroupApps)
+            .unwrap()
+            .rect;
+        event::handle_mouse_event(
+            &mut app,
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: grp_rect.x + 1,
+                row: grp_rect.y,
+                modifiers: KeyModifiers::empty(),
+            },
+        );
+        assert!(app.group_apps);
+
+        // Right-click on the first visible process row to open ProcessDetails modal
+        terminal.draw(|frame| ui::draw(frame, &mut app)).unwrap();
+        let row_rect = app
+            .hitboxes
+            .iter()
+            .find(|h| matches!(h.target, HitTarget::ProcessRow(_)))
+            .unwrap()
+            .rect;
+        event::handle_mouse_event(
+            &mut app,
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Right),
+                column: row_rect.x + 2,
+                row: row_rect.y,
+                modifiers: KeyModifiers::empty(),
+            },
+        );
+        assert!(matches!(app.modal, ModalState::ProcessDetails { .. }));
     }
 
     #[test]

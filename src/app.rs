@@ -210,8 +210,13 @@ impl App {
 
         // Preserve selection by PID if possible
         if let Some(pid) = self.selected_pid {
-            if let Some(pos) = self.view_processes.iter().position(|p| p.pid == pid) {
+            if let Some(pos) = self
+                .view_processes
+                .iter()
+                .position(|p| p.pid == pid || p.group_pids.contains(&pid))
+            {
                 self.table_state.select(Some(pos));
+                self.selected_pid = Some(self.view_processes[pos].pid);
                 return;
             }
         }
@@ -270,6 +275,8 @@ impl App {
             );
         }
         self.rebuild_process_list();
+        self.select_index(0);
+        *self.table_state.offset_mut() = 0;
     }
 
     pub fn open_signal_modal(&mut self, default_signal: ActionSignal) {
